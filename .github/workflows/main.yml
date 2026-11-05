@@ -43,7 +43,7 @@ jobs:
           yes | sdkmanager --licenses > /dev/null || true
           sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
 
-          # Find icon.png anywhere in the repo (case-insensitive)
+          # Find icon.png anywhere in the repo
           ICON_SOURCE=""
           for f in icon.png Icon.png ICON.PNG logo.png public/icon.png src/assets/icon.png; do
             if [ -f "$f" ]; then
@@ -110,17 +110,7 @@ jobs:
             if [ -d "/tmp/MyApp/www/assets" ]; then
               sed -i '/<script type="importmap">/,/<\/script>/d' /tmp/MyApp/www/index.html
             fi
-            cat << 'EOF' > /tmp/inject.js
-          <script>
-          (function() {
-            try {
-              if (window.location.protocol.indexOf('http') === 0 && window.location.pathname.endsWith('/index.html')) {
-                window.history.replaceState(null, '', window.location.pathname.replace(/\/index\.html$/, '/'));
-              }
-            } catch (e) {}
-          })();
-          </script>
-          EOF
+            printf '<script>\n(function(){\ntry{\nif(window.location.protocol.indexOf("http")===0 && window.location.pathname.endsWith("/index.html")){\nwindow.history.replaceState(null,"",window.location.pathname.replace(/\\/index\\.html$/,"/"));\n}\n}catch(e){}\n})();\n</script>\n' > /tmp/inject.js
             sed -i "/<head>/r /tmp/inject.js" /tmp/MyApp/www/index.html
           fi
 
@@ -130,7 +120,6 @@ jobs:
           sudo apt-get update -y && sudo apt-get install -y imagemagick || true
           if [ -n "$ICON_SOURCE" ] && [ -f "$ICON_SOURCE" ]; then
             convert "$ICON_SOURCE" -resize 512x512! /tmp/MyApp/icon_clean.png 2>/dev/null || cp "$ICON_SOURCE" /tmp/MyApp/icon_clean.png
-            # Safe zone padding for adaptive foreground (330x330 inside 512x512) to avoid circular cropping
             convert "$ICON_SOURCE" -resize 330x330 -gravity center -background none -extent 512x512 /tmp/MyApp/icon_foreground.png 2>/dev/null || cp /tmp/MyApp/icon_clean.png /tmp/MyApp/icon_foreground.png
             convert "$ICON_SOURCE" -resize 300x300 -gravity center -background none -extent 512x512 /tmp/MyApp/splash_clean.png 2>/dev/null || cp /tmp/MyApp/icon_clean.png /tmp/MyApp/splash_clean.png
           else
@@ -141,22 +130,9 @@ jobs:
 
           # Configure Cordova config.xml
           sed -i "s|<name>.*</name>|<name>$APP_NAME</name>|g" config.xml
-          cat << 'EOF' > /tmp/cordova_prefs.xml
-            <allow-navigation href="*" />
-            <access origin="*" />
-            <preference name="MixedContentMode" value="0" />
-            <preference name="AndroidXEnabled" value="true" />
-            <preference name="hostname" value="localhost" />
-            <preference name="AndroidInsecureFileModeEnabled" value="false" />
-            <preference name="AndroidWindowSplashScreenAnimatedIcon" value="splash_clean.png" />
-            <preference name="AndroidWindowSplashScreenBackground" value="#FFFFFF" />
-            <icon src="icon_clean.png" />
-          </widget>
-          EOF
-          sed -i '/<\/widget>/ {
-            r /tmp/cordova_prefs.xml
-            d
-          }' config.xml
+          printf '    <allow-navigation href="*" />\n    <access origin="*" />\n    <preference name="MixedContentMode" value="0" />\n    <preference name="AndroidXEnabled" value="true" />\n    <preference name="hostname" value="localhost" />\n    <preference name="AndroidInsecureFileModeEnabled" value="false" />\n    <preference name="AndroidWindowSplashScreenAnimatedIcon" value="splash_clean.png" />\n    <preference name="AndroidWindowSplashScreenBackground" value="#FFFFFF" />\n    <icon src="icon_clean.png" />\n</widget>\n' > /tmp/cordova_prefs.xml
+          sed -i '/<\/widget>/ { r /tmp/cordova_prefs.xml
+          d }' config.xml
 
           cordova platform add android@14.0.1
 
@@ -186,24 +162,11 @@ jobs:
             ADAPTIVE_DIR="platforms/android/app/src/main/res/mipmap-anydpi-v26"
             mkdir -p "$ADAPTIVE_DIR"
 
-            cat << 'EOF' > "$ADAPTIVE_DIR/ic_launcher.xml"
-<?xml version="1.0" encoding="utf-8"?>
-<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
-    <background android:drawable="@android:color/white"/>
-    <foreground android:drawable="@mipmap/ic_launcher_foreground"/>
-</adaptive-icon>
-EOF
-
-            cat << 'EOF' > "$ADAPTIVE_DIR/ic_launcher_round.xml"
-<?xml version="1.0" encoding="utf-8"?>
-<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
-    <background android:drawable="@android:color/white"/>
-    <foreground android:drawable="@mipmap/ic_launcher_foreground"/>
-</adaptive-icon>
-EOF
+            printf '<?xml version="1.0" encoding="utf-8"?>\n<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">\n    <background android:drawable="@android:color/white"/>\n    <foreground android:drawable="@mipmap/ic_launcher_foreground"/>\n</adaptive-icon>\n' > "$ADAPTIVE_DIR/ic_launcher.xml"
+            cp "$ADAPTIVE_DIR/ic_launcher.xml" "$ADAPTIVE_DIR/ic_launcher_round.xml"
           fi
 
-          # 5. Compile the Android APK directly (avoids Cordova overwriting modified icons)
+          # 5. Compile the Android APK directly
           cordova compile android
 
       - name: Upload APK
